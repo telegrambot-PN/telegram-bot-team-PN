@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.example
+.claude/
+claudekit/
+implementation_plan.md
+task.md
+walkthrough.md
+*.log
+.repomixignore
+IDM.zip
