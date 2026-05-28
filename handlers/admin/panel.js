@@ -5,6 +5,7 @@ import { Markup } from 'telegraf';
 import { Order, Product, Stock, Ticket } from '../../db.js';
 import { requireAdmin, isAdmin } from '../../middlewares/auth.js';
 import { formatCurrency } from '../../utils/formatter.js';
+import { syncWithGoogleSheets } from '../../core/sheetSync.js';
 
 /**
  * Tạo text và keyboard cho Admin Panel
@@ -41,6 +42,7 @@ export async function getAdminPanel() {
       Markup.button.callback('📥 Nhập SP từ CSV', 'admin_import_products_csv'),
       Markup.button.callback('📥 Nhập Kho từ CSV', 'admin_import_stocks_csv'),
     ],
+    [Markup.button.callback('🔄 Đồng bộ Google Sheets (Realtime)', 'admin_sync_sheets')],
     [Markup.button.callback('🚨 Tickets Hỗ Trợ', 'admin_view_tickets')],
     [Markup.button.callback('↩️ Quay lại Menu chính', 'show_menu')],
   ];
@@ -76,6 +78,51 @@ export function registerAdminPanelHandlers(bot) {
       return ctx.replyWithMarkdown(admin.text, admin.keyboard);
     } catch (e) {
       console.error('admin_panel error:', e);
+    }
+  });
+
+  // Nút đồng bộ Google Sheets Realtime
+  bot.action('admin_sync_sheets', async (ctx) => {
+    try {
+      if (!(await requireAdmin(ctx))) return;
+
+      await ctx.answerCbQuery('⏳ Đang đồng bộ...').catch(() => {});
+      await ctx.reply('⏳ Bắt đầu kết nối bảo mật và đồng bộ từ Google Sheets...');
+
+      const result = await syncWithGoogleSheets();
+
+      if (result.success) {
+        const stats = result.stats;
+        let reportText =
+          `✅ *ĐỒNG BỘ GOOGLE SHEETS THÀNH CÔNG!*\n` +
+          `-----------------------------------------\n` +
+          `• Sản phẩm mới được tạo: *${stats.productsAdded}*\n` +
+          `• Tài khoản nạp kho mới: *${stats.stocksAdded}*\n` +
+          `• Bỏ qua (đã bán hoặc trùng lặp): *${stats.stocksSkipped}*\n`;
+
+        if (stats.missingProductsCount > 0) {
+          reportText += `\n⚠️ *Tài khoản bị bỏ qua do sản phẩm chưa có trên Bot:*\n`;
+          stats.missingProducts.slice(0, 5).forEach((pName) => {
+            reportText += `- _${pName}_\n`;
+          });
+          if (stats.missingProductsCount > 5) {
+            reportText += `- _và ${stats.missingProductsCount - 5} sản phẩm khác..._\n`;
+          }
+        }
+
+        return ctx.reply(
+          reportText,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('⚙️ Admin Panel', 'admin_panel')],
+            [Markup.button.callback('↩️ Menu chính', 'show_menu')],
+          ])
+        );
+      } else {
+        return ctx.reply(`❌ Đồng bộ thất bại: ${result.message}`);
+      }
+    } catch (e) {
+      console.error('admin_sync_sheets action error:', e);
+      ctx.reply('❌ Lỗi hệ thống khi đồng bộ dữ liệu!');
     }
   });
 }
