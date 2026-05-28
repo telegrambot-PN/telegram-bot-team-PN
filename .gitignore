@@ -9,3 +9,5 @@ walkthrough.md
 *.log
 .repomixignore
 IDM.zip
+db.json
+
