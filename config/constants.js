@@ -50,6 +50,7 @@ export const TICKET_STATUS = {
 export const SESSION_STATES = {
   // User flows
   AWAITING_TICKET_DESC: 'awaiting_ticket_desc_',
+  AWAITING_CAPTCHA: 'awaiting_captcha_',
   // Admin flows
   ADMIN_AWAITING_PROD_NAME: 'admin_awaiting_prod_name',
   ADMIN_AWAITING_PROD_PRICE: 'admin_awaiting_prod_price',

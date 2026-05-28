@@ -30,6 +30,7 @@ import { registerAdminPanelHandlers } from './handlers/admin/panel.js';
 import { registerAdminProductHandlers } from './handlers/admin/product.js';
 import { registerAdminStockHandlers } from './handlers/admin/stock.js';
 import { registerAdminTicketHandlers } from './handlers/admin/tickets.js';
+import { registerAdminCsvImportHandlers } from './handlers/admin/csvImport.js';
 
 // Text Handler (State Machine)
 import { registerTextHandler } from './handlers/textHandler.js';
@@ -91,6 +92,7 @@ registerAdminPanelHandlers(bot);
 registerAdminProductHandlers(bot);
 registerAdminStockHandlers(bot);
 registerAdminTicketHandlers(bot);
+registerAdminCsvImportHandlers(bot);
 
 registerTextHandler(bot);
 

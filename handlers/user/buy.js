@@ -4,13 +4,14 @@
 
 import { Markup } from 'telegraf';
 import { Product, Stock, Order } from '../../db.js';
-import { BANK, ORDER, ORDER_STATUS, STOCK_STATUS } from '../../config/constants.js';
+import { BANK, ORDER, ORDER_STATUS, STOCK_STATUS, SESSION_STATES } from '../../config/constants.js';
 import { formatCurrency, generateId } from '../../utils/formatter.js';
 import { decrypt } from '../../security/crypto.js';
 import { logAction, AUDIT_ACTIONS } from '../../security/audit.js';
 import { eventBus, EVENTS } from '../../core/eventBus.js';
 import { FEATURES } from '../../config/features.js';
 import { getMenuMessageAndKeyboard } from './menu.js';
+import { isUserVerified, generateCaptcha, evaluateUserTrust } from '../../security/opsec.js';
 
 /**
  * Đăng ký các handlers liên quan đến mua hàng
@@ -30,6 +31,36 @@ export function registerBuyHandlers(bot) {
         return ctx.answerCbQuery('⚠️ Rất tiếc, sản phẩm này hiện đã hết hàng!', { show_alert: true });
       }
 
+      // 🛡️ 1. Kiểm tra xác minh Captcha lần đầu mua hàng
+      const verified = await isUserVerified(ctx.from.id);
+      if (!verified) {
+        const { question, answer } = generateCaptcha();
+        ctx.session.state = `${SESSION_STATES.AWAITING_CAPTCHA}${productId}`;
+        ctx.session.captchaAnswer = answer;
+        return ctx.reply(
+          `🛡️ *XÁC MINH BẢO MẬT LẦN ĐẦU MUA HÀNG*\n\n` +
+          `Để bảo vệ hệ thống khỏi các hành vi lạm dụng và spam bot, vui lòng giải phép toán bảo mật dưới đây:\n\n` +
+          `${question}`,
+          { parse_mode: 'Markdown', ...Markup.forceReply() }
+        );
+      }
+
+      // 🛡️ 2. Đánh giá điểm tin cậy (Trust Score) chống trinh sát
+      const { score, isLowTrust } = await evaluateUserTrust(ctx.from.id, ctx.from.username);
+      
+      if (score < 40) {
+        // 🔴 Shadowban: Báo lỗi giả bảo trì kho hàng để đánh lạc hướng tự nhiên
+        return ctx.reply(
+          `⚠️ *KHO HÀNG ĐANG BẢO TRÌ*\n\n` +
+          `Rất tiếc, sản phẩm *${product.name}* hiện đang được đồng bộ hoặc bảo trì hệ thống cấp phát tự động.\n\n` +
+          `_Vui lòng quay lại sau ít phút hoặc liên hệ Admin để được hỗ trợ._`,
+          { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('↩️ Quay lại Menu', 'show_menu')]]) }
+        );
+      }
+
+      // 🟠 Nếu Trust Score trung bình-thấp: Chỉ cho phép trả Binance Pay (ẩn VietQR ngân hàng nội địa để giấu danh tính)
+      const binancePayOnly = score < 70;
+
       const userId = ctx.from.id;
       const orderId = generateId(ORDER.ID_PREFIX);
 
@@ -45,9 +76,10 @@ export function registerBuyHandlers(bot) {
 
       await ctx.answerCbQuery('📝 Đã tạo hóa đơn thanh toán!');
 
-      // Tạo QR VietQR
+      // Tạo QR
       const addInfo = `THANH TOAN DON HANG ${orderId}`;
       const qrUrl = `https://img.vietqr.io/image/${BANK.id}-${BANK.accountNo}-compact.png?amount=${product.price}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(BANK.accountName)}`;
+      const photoUrl = binancePayOnly ? 'https://cryptologos.cc/logos/tether-usdt-logo.png' : qrUrl;
 
       const checkoutText =
         `📝 *THÔNG TIN THANH TOÁN ĐƠN HÀNG*\n` +
@@ -56,16 +88,21 @@ export function registerBuyHandlers(bot) {
         `📦 Sản phẩm: *${product.name}*\n` +
         `💰 Số tiền: *${formatCurrency(product.price)}*\n` +
         `🚚 Trạng thái: *Chờ thanh toán* ⏳\n\n` +
-        `👉 *Hướng dẫn chuyển khoản:*\n` +
-        `   • Ngân hàng: *MB Bank (MB)*\n` +
-        `   • Số tài khoản: \`${BANK.accountNo}\`\n` +
-        `   • Tên tài khoản: *${BANK.accountName}*\n` +
-        `   • Số tiền: *${formatCurrency(product.price)}*\n` +
-        `   • Nội dung CK: \`${addInfo}\`\n\n` +
+        (binancePayOnly ? 
+          `💳 *PHƯƠNG THỨC THANH TOÁN KHUYÊN DÙNG:*\n` +
+          `👉 Do cổng ngân hàng nội địa đang bảo trì nâng cấp, tài khoản của bạn tạm thời chỉ có thể thực hiện thanh toán bằng *Crypto (USDT / Binance Pay)* để nhận hàng tự động.\n\n`
+          :
+          `👉 *Hướng dẫn chuyển khoản:*\n` +
+          `   • Ngân hàng: *MB Bank (MB)*\n` +
+          `   • Số tài khoản: \`${BANK.accountNo}\`\n` +
+          `   • Tên tài khoản: *${BANK.accountName}*\n` +
+          `   • Số tiền: *${formatCurrency(product.price)}*\n` +
+          `   • Nội dung CK: \`${addInfo}\`\n\n`
+        ) +
         `⚠️ *LƯU Ý:* Hệ thống đang ở chế độ **GIẢ LẬP**. Bấm nút bên dưới để giả lập thanh toán!`;
 
       await ctx.deleteMessage().catch(() => {});
-      return ctx.replyWithPhoto(qrUrl, {
+      return ctx.replyWithPhoto(photoUrl, {
         caption: checkoutText,
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([

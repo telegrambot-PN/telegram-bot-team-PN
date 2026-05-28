@@ -37,6 +37,10 @@ export async function getAdminPanel() {
       Markup.button.callback('➕ Thêm Sản Phẩm Mới', 'admin_add_product'),
       Markup.button.callback('🗝️ Nạp Kho (Add Stock)', 'admin_add_stock'),
     ],
+    [
+      Markup.button.callback('📥 Nhập SP từ CSV', 'admin_import_products_csv'),
+      Markup.button.callback('📥 Nhập Kho từ CSV', 'admin_import_stocks_csv'),
+    ],
     [Markup.button.callback('🚨 Tickets Hỗ Trợ', 'admin_view_tickets')],
     [Markup.button.callback('↩️ Quay lại Menu chính', 'show_menu')],
   ];

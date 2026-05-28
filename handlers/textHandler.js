@@ -11,6 +11,7 @@ import { logAction, AUDIT_ACTIONS } from '../security/audit.js';
 import { sanitizeText, sanitizeAccountList, validatePrice, validateProductName, validateIssueDescription } from '../security/sanitize.js';
 import { eventBus, EVENTS } from '../core/eventBus.js';
 import { FEATURES } from '../config/features.js';
+import { generateCaptcha, markUserVerified } from '../security/opsec.js';
 
 /**
  * Đăng ký handler bot.on('text')
@@ -27,6 +28,43 @@ export function registerTextHandler(bot) {
       if (text.startsWith('/')) {
         session.state = null;
         return;
+      }
+
+      // ────────────────────────────────────────
+      // FLOW USER: Giải Captcha xác minh chống Bot
+      // ────────────────────────────────────────
+      if (session.state?.startsWith(SESSION_STATES.AWAITING_CAPTCHA)) {
+        const productId = session.state.split('_').slice(-1)[0];
+        const userAnswer = parseInt(text.trim(), 10);
+        const correctAnswer = parseInt(session.captchaAnswer, 10);
+
+        if (!isNaN(userAnswer) && userAnswer === correctAnswer) {
+          await markUserVerified(ctx.from.id);
+          session.state = null;
+          session.captchaAnswer = null;
+
+          return ctx.reply(
+            `🎉 *XÁC MINH DANH TÍNH THÀNH CÔNG!*\n\n` +
+            `Bạn đã chứng minh mình không phải robot. Bây giờ bạn có thể tiếp tục tiến hành mua sản phẩm.`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('🛒 Tiến hành mua hàng ngay', `buy_${productId}`)],
+                [Markup.button.callback('↩️ Quay lại Menu chính', 'show_menu')]
+              ])
+            }
+          );
+        } else {
+          const { question, answer } = generateCaptcha();
+          session.captchaAnswer = answer;
+          
+          return ctx.reply(
+            `❌ *KẾT QUẢ CHƯA CHÍNH XÁC!*\n\n` +
+            `Vui lòng giải phép toán bảo mật mới dưới đây để tiếp tục:\n\n` +
+            `${question}`,
+            { parse_mode: 'Markdown', ...Markup.forceReply() }
+          );
+        }
       }
 
       // ────────────────────────────────────────

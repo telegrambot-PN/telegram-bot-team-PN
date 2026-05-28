@@ -53,6 +53,7 @@ if (!useMock) {
     firstName: { type: String },
     username: { type: String },
     role: { type: String, enum: ['owner', 'admin', 'ctv', 'user'], default: 'user' },
+    captchaVerified: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
   });
 
