@@ -20,9 +20,10 @@ export function registerBuyHandlers(bot) {
   // Bắt đầu luồng mua
   bot.action(/^buy_(.+)$/, async (ctx) => {
     try {
+      await ctx.answerCbQuery('📝 Đang tạo hóa đơn...').catch(() => {});
       const productId = ctx.match[1];
       const product = await Product.findById(productId);
-      if (!product) return ctx.answerCbQuery('⚠️ Sản phẩm không tồn tại!');
+      if (!product) return;
 
       const stockCount = await Stock.countDocuments({ productId, status: STOCK_STATUS.AVAILABLE });
       if (stockCount === 0) {
@@ -83,12 +84,13 @@ export function registerBuyHandlers(bot) {
   // Giả lập thanh toán thành công
   bot.action(/^simulate_paid_(.+)$/, async (ctx) => {
     try {
+      await ctx.answerCbQuery('💸 Đang xác nhận thanh toán...').catch(() => {});
       const orderId = ctx.match[1];
       const order = await Order.findOne({ orderId }).populate('productId');
-      if (!order) return ctx.answerCbQuery('⚠️ Đơn hàng không tồn tại!');
+      if (!order) return;
 
       if (order.status !== ORDER_STATUS.PENDING) {
-        return ctx.answerCbQuery(`⚠️ Đơn hàng đã xử lý (${order.status})`);
+        return;
       }
 
       // Lấy tài khoản từ kho — dùng findOneAndUpdate để tránh trùng lặp
@@ -99,7 +101,7 @@ export function registerBuyHandlers(bot) {
       );
 
       if (!account) {
-        await ctx.answerCbQuery('⚠️ Gói này vừa hết hàng! Đơn hàng đã hủy.');
+        await ctx.answerCbQuery('⚠️ Gói này vừa hết hàng! Đơn hàng đã hủy.').catch(() => {});
         order.status = ORDER_STATUS.CANCELED;
         await order.save();
         return ctx.reply('❌ Kho hàng đã hết. Vui lòng liên hệ Admin để nhận lại tiền hoặc chọn gói khác.');
@@ -109,7 +111,7 @@ export function registerBuyHandlers(bot) {
       order.accountDelivered = account.accountData; // lưu encrypted
       await order.save();
 
-      await ctx.answerCbQuery('🎉 Xác nhận thanh toán thành công!');
+      await ctx.answerCbQuery('🎉 Xác nhận thanh toán thành công!').catch(() => {});
 
       // ✅ Giải mã trước khi gửi cho user
       const displayAccount = FEATURES.ENCRYPT_ACCOUNTS ? decrypt(account.accountData) : account.accountData;
@@ -158,14 +160,12 @@ export function registerBuyHandlers(bot) {
   // Hủy đơn hàng
   bot.action(/^cancel_order_(.+)$/, async (ctx) => {
     try {
+      await ctx.answerCbQuery('❌ Đang hủy đơn...').catch(() => {});
       const orderId = ctx.match[1];
       const order = await Order.findOne({ orderId });
       if (order && order.status === ORDER_STATUS.PENDING) {
         order.status = ORDER_STATUS.CANCELED;
         await order.save();
-        await ctx.answerCbQuery('❌ Đơn hàng đã hủy.');
-      } else {
-        await ctx.answerCbQuery('⚠️ Không thể hủy đơn hàng này.');
       }
 
       const menu = await getMenuMessageAndKeyboard(ctx.from.id);

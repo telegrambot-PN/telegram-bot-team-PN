@@ -19,20 +19,18 @@ class EventBus {
     this._listeners.get(event).push(handler);
   }
 
-  /**
-   * Phát một sự kiện — gọi tất cả handlers đã đăng ký
-   * @param {string} event - Tên sự kiện
-   * @param {object} data - Dữ liệu đính kèm
-   */
   async emit(event, data = {}) {
     const handlers = this._listeners.get(event) || [];
-    for (const handler of handlers) {
-      try {
-        await handler(data);
-      } catch (e) {
-        console.error(`[EventBus] Lỗi handler cho sự kiện "${event}":`, e.message);
-      }
-    }
+    // Chạy song song và bất đồng bộ hoàn toàn để tránh block luồng chính của bot
+    Promise.all(
+      handlers.map(async (handler) => {
+        try {
+          await handler(data);
+        } catch (e) {
+          console.error(`[EventBus] Lỗi handler cho sự kiện "${event}":`, e.message);
+        }
+      })
+    );
   }
 
   /**
